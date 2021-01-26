@@ -4,9 +4,9 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.7
-  - pip
-  - pandas
+  - python=3.6
+  - cudatoolkit=11.0
+  - pandas<0.26
   - matplotlib
   - jupyter
   - nbconvert
@@ -14,14 +14,17 @@ dependencies:
   - scipy
   - tqdm
   - scikit-learn
+  - pip
   - pip:
-    - mlflow
-    - https://download.pytorch.org/whl/cu110/torch-1.7.1%2Bcu110-cp37-cp37m-linux_x86_64.whl
-    - https://download.pytorch.org/whl/cu110/torchvision-0.8.2%2Bcu110-cp37-cp37m-linux_x86_64.whl
-    - https://pytorch-geometric.com/whl/torch-1.7.0+cu110/torch_cluster-1.5.8-cp37-cp37m-linux_x86_64.whl
-    - https://pytorch-geometric.com/whl/torch-1.7.0+cu110/torch_scatter-2.0.5-cp37-cp37m-linux_x86_64.whl
-    - https://pytorch-geometric.com/whl/torch-1.7.0+cu110/torch_sparse-0.6.8-cp37-cp37m-linux_x86_64.whl
-    - https://pytorch-geometric.com/whl/torch-1.7.0+cu110/torch_spline_conv-1.2.0-cp37-cp37m-linux_x86_64.whl
+    - --find-links https://download.pytorch.org/whl/torch_stable.html 
+    - --find-links https://pytorch-geometric.com/whl/torch-1.7.0+cu110.html
+    - torch==1.7.1+cu110
+    - torchvision==0.8.2+cu110 
+    - torchaudio===0.7.2
+    - torch-cluster
+    - torch-scatter
+    - torch-sparse
+    - torch-spline-conv
     - torch-geometric
     - git+https://github.com/LAL/trackml-library
     - kaggle

@@ -110,6 +110,7 @@ class TrackMLParticleTrackingDataset(Dataset):
                  n_phi_sections=1, n_eta_sections=1,                #N Sections
                  augments=False, intersect=False,                   #Toggle Switches
                  hough=False, tracking=False,                       #Toggle Switches
+                 no_edge_features=True,                             #Toggle Switches
                  n_workers=mp.cpu_count(), n_tasks=1                #multiprocessing
                  ):
         events = glob.glob(osp.join(osp.join(root, 'raw'), 'event*-hits.csv'))
@@ -133,6 +134,7 @@ class TrackMLParticleTrackingDataset(Dataset):
         self.intersect        = intersect
         self.hough            = hough
         self.tracking         = tracking
+        self.no_edge_features = no_edge_features
         self.n_workers        = n_workers
         self.n_tasks          = n_tasks
 
@@ -337,10 +339,32 @@ class TrackMLParticleTrackingDataset(Dataset):
             row = nnz1[row]
             col = nnz2[col]
             edge_index = torch.stack([row, col], dim=0)
-
+            
             edge_indices = torch.cat((edge_indices, edge_index), 1)
 
         return edge_indices
+    
+    
+    def compute_edge_attr(self, x, edge_index):
+        # print("Constructing Edge Attr")
+        row, col = edge_index
+        in_r, in_phi, in_z    = x[row][:,0], x[row][:,1], x[row][:,2]
+        out_r, out_phi, out_z = x[col][:,0], x[col][:,1], x[col][:,2]
+        in_r3 = np.sqrt(in_r**2 + in_z**2)
+        out_r3 = np.sqrt(out_r**2 + out_z**2)
+        in_theta = np.arccos(in_z/in_r3)
+        in_eta = -np.log(np.tan(in_theta/2.0))
+        out_theta = np.arccos(out_z/out_r3)
+        out_eta = -np.log(np.tan(out_theta/2.0))
+        deta = out_eta - in_eta
+        dphi = out_phi - in_phi
+        dphi[dphi > np.pi] -= 2 * np.pi
+        dphi[dphi < -np.pi] += 2 * np.pi
+        dR = np.sqrt(deta**2 + dphi**2)
+        dZ = in_z - out_z
+        edge_attr = torch.stack([deta, dphi, dR, dZ], dim=1)
+ 
+        return edge_attr
 
 
     def compute_y_index(self, edge_indices, particle):
@@ -402,11 +426,8 @@ class TrackMLParticleTrackingDataset(Dataset):
     def process_task(self, idx):
         print('Running task ' + str(idx))
         task_events = np.array_split(self.events, self.n_tasks)
-        print(task_events)
-        print(task_events[idx])
         with mp.Pool(processes = self.n_workers) as pool:
-            pool.map(self.process_event, task_events[idx])
-            #pool.map(self.process_event, tqdm(task_events[idx]))
+            pool.map(self.process_event, tqdm(task_events[idx]))
 
 
     def process_event(self, idx):
@@ -425,12 +446,16 @@ class TrackMLParticleTrackingDataset(Dataset):
             edge_index = self.compute_edge_index(pos_sect[i], layer_sect[i])
             y = self.compute_y_index(edge_index, particle_sect[i])
 
-            edge_votes = torch.zeros(edge_index.shape[1], 0, dtype=torch.long)
-            if(self.hough):
+            if self.no_edge_features: 
+                edge_attr = torch.zeros(edge_index.shape[1], 1, dtype=torch.float32)
+            elif(self.hough):
                 accumulator0, accumulator1 = self.build_accumulator(pos_sect[i])
-                edge_votes  = self.extract_votes(accumulator0, accumulator1, pos_sect[i], edge_index)
+                edge_attr  = self.extract_votes(accumulator0, accumulator1, pos_sect[i], edge_index)
+            else:
+                edge_attr = self.compute_edge_attr(pos_sect[i], edge_index)
+                
 
-            data = Data(x=pos_sect[i], edge_index=edge_index, edge_attr=edge_votes, y=y, tracks=tracks)
+            data = Data(x=pos_sect[i], edge_index=edge_index, edge_attr=edge_attr, y=y, tracks=tracks)
 
             if not self.directed and not data.is_undirected():
                 rows,cols = data.edge_index
@@ -774,3 +799,4 @@ class TrackMLParticleTrackingDataset(Dataset):
             edge_votes = torch.cat((edge_votes, votes), 1)
 
         return edge_votes.T
+        
